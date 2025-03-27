@@ -5,17 +5,13 @@ A tool to score and filter a list of words from a text file using an LLM from Op
 ## Features
 
 - Score words using Claude 3.5 Sonnet or other models from OpenRouter
-- Filter scored words based on configurable minimum score threshold
-- Read prompts from a file (not hardcoded)
-- Process words in batches for improved performance
-- Customizable output files
-- Separate commands for scoring and filtering
+- Use a custom prompt to score words
 
 ## Installation
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/llm-wordlist.git
+   git clone https://github.com/serdil/llm-wordlist.git
    cd llm-wordlist
    ```
 
