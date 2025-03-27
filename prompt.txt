@@ -1,0 +1,7 @@
+I am playing a game (like gartic.io or skribbl.io) where I have to describe Turkish phrases by drawing them. Therefore, the words I use for this game should be concepts that can be drawn. Some abstract concepts may be fine but some may not. If the word or phrase is too uncommon for most people to know or use daily, or if it is a scientific term that only professionals would know it would be unsuitable as well. If the word has a way more often used synonym or it is obscure or outdated, it is not suitable. You should answer with scores for each word between 0-100 depending on how suitable they are. The words that have too many derivational affixes (yapim eki) are not suitable. Omit words that would have a score below 70 from the output. I don't want any explanations. Just the answer in the below format. The game has a time limit and only things that can be drawn simply are acceptable. I will start giving the words in newline separated format in the next message. The answer format should be like:
+elma:97
+abajurculuk:10
+kitap:90
+özgürlük:40
+maymun:95
+abanoz:20
