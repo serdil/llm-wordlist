@@ -1,15 +1,15 @@
 # LLM Wordlist Filter
 
-A tool to filter a list of words from a text file using an LLM from OpenRouter. The tool scores words based on a provided prompt and filters out words with scores below a specified threshold.
+A tool to score and filter a list of words from a text file using an LLM from OpenRouter. The tool first scores words based on a provided prompt, then allows filtering out words with scores below a specified threshold.
 
 ## Features
 
-- Filter words using Claude 3.5 Sonnet or other models from OpenRouter
+- Score words using Claude 3.5 Sonnet or other models from OpenRouter
+- Filter scored words based on configurable minimum score threshold
 - Read prompts from a file (not hardcoded)
-- Prompt caching for improved performance and reduced costs
-- Configurable minimum score threshold
-- Customizable output file
-- Filter already scored words without re-scoring them
+- Process words in batches for improved performance
+- Customizable output files
+- Separate commands for scoring and filtering
 
 ## Installation
 
@@ -35,7 +35,7 @@ A tool to filter a list of words from a text file using an LLM from OpenRouter. 
 ## Usage
 
 The tool provides two main commands:
-1. `score` - Score words using an LLM and filter them
+1. `score` - Score words using an LLM and save the scores
 2. `filter` - Filter already scored words based on a threshold
 
 ### Scoring Words
@@ -50,14 +50,12 @@ This will:
 1. Read words from `input_words.txt` (one word per line)
 2. Read the prompt from `prompt.txt`
 3. Score the words using Claude 3.5 Sonnet
-4. Filter out words with scores below 90
-5. Save all words with scores to `all_words_scores.txt`
-6. Save the filtered words to `filtered_words.txt`
+4. Save all words with scores to `all_words_scores.txt`
 
 Advanced options:
 
 ```
-python main.py score input_words.txt --prompt-file custom_prompt.txt --all-scores-file all_scores.txt --filtered-words-file results.txt --min-score 70 --model anthropic/claude-3-opus
+python main.py score input_words.txt --prompt-file custom_prompt.txt --all-scores-file all_scores.txt --model anthropic/claude-3-opus --batch-size 50 --debug
 ```
 
 ### Filtering Already Scored Words
@@ -86,8 +84,6 @@ python main.py filter --input-file custom_scores.txt --output-file custom_filter
 - `input_file`: Path to the input file containing words (one per line)
 - `--prompt-file`: Path to the file containing the prompt (default: prompt.txt)
 - `--all-scores-file`: Path to save all words with scores (default: all_words_scores.txt)
-- `--filtered-words-file`: Path to save only the filtered words without scores (default: filtered_words.txt)
-- `--min-score`: Minimum score to keep a word (default: 90)
 - `--model`: OpenRouter model to use (default: from .env or claude-3.5-sonnet)
 - `--batch-size`: Number of words to process in each batch (default: 100)
 - `--debug`: Enable debug output
@@ -126,6 +122,11 @@ mikroskop
 kalem
 ```
 
+After running the score command:
+```
+python main.py score words.txt
+```
+
 All scores file (`all_words_scores.txt`):
 ```
 elma:95
@@ -134,7 +135,12 @@ mikroskop:75
 kalem:90
 ```
 
-Filtered words file (`filtered_words.txt`) with min_score=90:
+Then, to filter words with a minimum score of 90:
+```
+python main.py filter --min-score 90
+```
+
+This produces a filtered words file (`filtered_words.txt`):
 ```
 elma
 kalem
