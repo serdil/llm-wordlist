@@ -1,11 +1,43 @@
 import argparse
 import json
+import locale
 import os
 import sys
 from typing import List, Dict
 
 import requests
 from dotenv import load_dotenv
+
+
+def turkish_sort_key(s):
+    """
+    Custom sort key function for Turkish alphabet.
+    Tries to use locale if available, otherwise falls back to custom mapping.
+    """
+    try:
+        # Try to set Turkish locale
+        locale.setlocale(locale.LC_COLLATE, 'tr_TR.UTF-8')
+        return locale.strxfrm(s.lower())
+    except (locale.Error, AttributeError):
+        # Fall back to custom Turkish character mapping if locale setting fails
+        # Turkish alphabet order: a, b, c, ç, d, e, f, g, ğ, h, ı, i, j, k, l, m, n, o, ö, p, r, s, ş, t, u, ü, v, y, z
+        tr_char_map = {
+            'ç': 'c\u0327',  # c comes before ç
+            'ğ': 'g\u0327',  # g comes before ğ
+            'ı': 'i\u0326',  # ı comes before i
+            'i': 'i\u0327',  # i comes after ı
+            'ö': 'o\u0327',  # o comes before ö
+            'ş': 's\u0327',  # s comes before ş
+            'ü': 'u\u0327',  # u comes before ü
+        }
+
+        # Replace Turkish characters with their sortable equivalents
+        result = ''
+        for c in s.lower():
+            result += tr_char_map.get(c, c)
+
+        # Handle digits as numbers
+        return [int(c) if c.isdigit() else c for c in result]
 
 
 def debug_print(debug_enabled: bool, *args, **kwargs):
@@ -143,8 +175,6 @@ def score_words_batch_with_llm(words_batch: List[str], prompt: str, model: str, 
 def score_words_with_llm(words: List[str], prompt: str, model: str, api_key: str, 
                          batch_size: int = 100,
                          all_scores_file: str = "all_words_scores.txt",
-                         filtered_words_file: str = "filtered_words.txt",
-                         min_score: int = 90,
                          debug: bool = False) -> Dict[str, int]:
     """
     Score words using the specified LLM model via OpenRouter API.
@@ -154,11 +184,8 @@ def score_words_with_llm(words: List[str], prompt: str, model: str, api_key: str
     if not words:
         return {}
 
-    # Initialize files
+    # Initialize all_scores_file
     with open(all_scores_file, 'w', encoding='utf-8') as all_file:
-        pass  # Create empty file
-
-    with open(filtered_words_file, 'w', encoding='utf-8') as filtered_file:
         pass  # Create empty file
 
     all_scores = {}
@@ -179,42 +206,73 @@ def score_words_with_llm(words: List[str], prompt: str, model: str, api_key: str
             for word, score in batch_scores.items():
                 all_file.write(f"{word}:{score}\n")
 
-        # Append filtered words to the filtered file
-        with open(filtered_words_file, 'a', encoding='utf-8') as filtered_file:
-            for word, score in batch_scores.items():
-                if score >= min_score:
-                    filtered_file.write(f"{word}\n")
-
     return all_scores
 
 
-def filter_words(scores: Dict[str, int], min_score: int = 90) -> Dict[str, int]:
-    """Filter words based on their scores."""
-    return {word: score for word, score in scores.items() if score >= min_score}
-
-
-def save_results(all_scores: Dict[str, int], all_scores_file: str, filtered_words_file: str, min_score: int = 90):
+def filter_scored_words(input_file: str, output_file: str, min_score: int):
     """
-    Save the results to two files:
-    1. all_scores_file: All words with their scores
-    2. filtered_words_file: Only words above the threshold (without scores)
+    Filter already scored words based on a threshold.
+
+    Args:
+        input_file: Path to the input file containing scored words (word:score format)
+        output_file: Path to save the filtered words
+        min_score: Minimum score to keep a word
     """
     try:
-        # Save all words with scores
-        with open(all_scores_file, 'w', encoding='utf-8') as file:
-            for word, score in sorted(all_scores.items(), key=lambda x: x[1], reverse=True):
-                file.write(f"{word}:{score}\n")
+        # Read scored words from input file
+        print(f"Reading scored words from {input_file}...")
+        all_scores = {}
+        total_lines = 0
+        skipped_lines = 0
+        duplicate_words = 0
 
-        # Save filtered words without scores
-        with open(filtered_words_file, 'w', encoding='utf-8') as file:
-            for word, score in sorted(all_scores.items(), key=lambda x: x[1], reverse=True):
-                if score >= min_score:
-                    file.write(f"{word}\n")
+        with open(input_file, 'r', encoding='utf-8') as file:
+            for line in file:
+                total_lines += 1
+                line = line.strip()
+                if not line:
+                    skipped_lines += 1
+                    continue
+                if ':' not in line:
+                    print(f"Warning: Line {total_lines} does not contain a colon: '{line}'")
+                    skipped_lines += 1
+                    continue
 
-        print(f"All words with scores saved to {all_scores_file}")
-        print(f"Filtered words saved to {filtered_words_file}")
+                word, score_str = line.split(':', 1)
+                word = word.strip()
+
+                try:
+                    score = int(score_str.strip())
+                    if word in all_scores:
+                        duplicate_words += 1
+                        # Keep the highest score for duplicate words
+                        all_scores[word] = max(all_scores[word], score)
+                    else:
+                        all_scores[word] = score
+                except ValueError:
+                    print(f"Warning: Line {total_lines} does not have a valid integer score: '{line}'")
+                    skipped_lines += 1
+                    continue
+
+        print(f"Total lines in file: {total_lines}")
+        print(f"Skipped lines: {skipped_lines}")
+        print(f"Duplicate words: {duplicate_words}")
+        print(f"Read {len(all_scores)} unique scored words.")
+
+        # Filter words based on threshold
+        filtered_words = {word: score for word, score in all_scores.items() if score >= min_score}
+
+        # Save filtered words to output file
+        with open(output_file, 'w', encoding='utf-8') as file:
+            # Sort words according to Turkish alphabet
+            for word in sorted(filtered_words.keys(), key=turkish_sort_key):
+                file.write(f"{word}\n")
+
+        print(f"Filtered {len(filtered_words)} words with scores >= {min_score}.")
+        print(f"Filtered words saved to {output_file}")
+
     except Exception as e:
-        print(f"Error saving results: {e}")
+        print(f"Error filtering words: {e}")
         sys.exit(1)
 
 
@@ -224,12 +282,10 @@ def parse_arguments():
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # Score command - original functionality
-    score_parser = subparsers.add_parser('score', help='Score words using an LLM and filter them')
+    score_parser = subparsers.add_parser('score', help='Score words using an LLM')
     score_parser.add_argument('input_file', help='Path to the input file containing words (one per line)')
     score_parser.add_argument('--prompt-file', default='prompt.txt', help='Path to the file containing the prompt (default: prompt.txt)')
     score_parser.add_argument('--all-scores-file', default='all_words_scores.txt', help='Path to save all words with scores (default: all_words_scores.txt)')
-    score_parser.add_argument('--filtered-words-file', default='filtered_words.txt', help='Path to save only the filtered words without scores (default: filtered_words.txt)')
-    score_parser.add_argument('--min-score', type=int, default=90, help='Minimum score to keep a word (default: 90)')
     score_parser.add_argument('--model', help='OpenRouter model to use (default: from .env or claude-3.5-sonnet)')
     score_parser.add_argument('--batch-size', type=int, default=100, help='Number of words to process in each batch (default: 100)')
     score_parser.add_argument('--debug', action='store_true', help='Enable debug output')
@@ -252,50 +308,6 @@ def parse_arguments():
             sys.exit(1)
 
     return args
-
-
-def filter_scored_words(input_file: str, output_file: str, min_score: int):
-    """
-    Filter already scored words based on a threshold.
-
-    Args:
-        input_file: Path to the input file containing scored words (word:score format)
-        output_file: Path to save the filtered words
-        min_score: Minimum score to keep a word
-    """
-    try:
-        # Read scored words from input file
-        print(f"Reading scored words from {input_file}...")
-        all_scores = {}
-
-        with open(input_file, 'r', encoding='utf-8') as file:
-            for line in file:
-                line = line.strip()
-                if line and ':' in line:
-                    word, score_str = line.split(':', 1)
-                    try:
-                        score = int(score_str.strip())
-                        all_scores[word.strip()] = score
-                    except ValueError:
-                        # Skip lines that don't have a valid integer score
-                        continue
-
-        print(f"Read {len(all_scores)} scored words.")
-
-        # Filter words based on threshold
-        filtered_words = {word: score for word, score in all_scores.items() if score >= min_score}
-
-        # Save filtered words to output file
-        with open(output_file, 'w', encoding='utf-8') as file:
-            for word in sorted(filtered_words.keys()):
-                file.write(f"{word}\n")
-
-        print(f"Filtered {len(filtered_words)} words with scores >= {min_score}.")
-        print(f"Filtered words saved to {output_file}")
-
-    except Exception as e:
-        print(f"Error filtering words: {e}")
-        sys.exit(1)
 
 
 def main():
@@ -344,14 +356,11 @@ def main():
             api_key, 
             batch_size=args.batch_size,
             all_scores_file=args.all_scores_file,
-            filtered_words_file=args.filtered_words_file,
-            min_score=args.min_score,
             debug=args.debug
         )
 
         # Print summary
-        filtered_count = sum(1 for score in all_scores.values() if score >= args.min_score)
-        print(f"Processed {len(all_scores)} words, {filtered_count} words with scores >= {args.min_score}.")
+        print(f"Processed {len(all_scores)} words. Use the 'filter' command to filter words based on scores.")
 
 
 if __name__ == "__main__":
